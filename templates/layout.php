@@ -582,6 +582,18 @@ audio { width: 100%; margin-top: .75rem; border-radius: 6px; outline: none; }
   <a href="index.php?page=podcasts" class="nav-mobile-item <?= $page==='podcasts'?'active':'' ?>">Podcasts</a>
   <a href="index.php?page=templates" class="nav-mobile-item <?= $page==='templates'?'active':'' ?>">Plantillas</a>
   <a href="index.php?page=local_drafts&podcast=<?= urlencode($activePodcast) ?>" class="nav-mobile-item <?= $page==='local_drafts'?'active':'' ?>">Borradores locales<?php if(!empty($localDrafts)): ?> <span class="draft-badge"><?= count($localDrafts) ?></span><?php endif; ?></a>
+  <!-- Theme selector in mobile menu -->
+  <div class="nav-mobile-item" style="flex-direction:column;align-items:flex-start;gap:.5rem;padding-bottom:.85rem">
+    <span style="font-size:.65rem;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;font-family:'Noto Sans Mono',monospace">Tema</span>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+      <button class="theme-opt theme-opt-mobile" data-theme="violet"  style="background:var(--bg3)"><span class="theme-dot" style="background:#c9b8ff"></span>Violeta</button>
+      <button class="theme-opt theme-opt-mobile" data-theme="teal"    style="background:var(--bg3)"><span class="theme-dot" style="background:#4dd9e0"></span>Teal</button>
+      <button class="theme-opt theme-opt-mobile" data-theme="amber"   style="background:var(--bg3)"><span class="theme-dot" style="background:#f5c542"></span>Ambar</button>
+      <button class="theme-opt theme-opt-mobile" data-theme="light"   style="background:var(--bg3)"><span class="theme-dot" style="background:#6d28d9"></span>Blanco</button>
+      <button class="theme-opt theme-opt-mobile" data-theme="light-blue" style="background:var(--bg3)"><span class="theme-dot" style="background:#1d6fb8"></span>Azul</button>
+      <button class="theme-opt theme-opt-mobile" data-theme="light-rose" style="background:var(--bg3)"><span class="theme-dot" style="background:#be1a2a"></span>Rosa</button>
+    </div>
+  </div>
   <a href="index.php?page=logout" class="nav-mobile-item exit">Salir</a>
 </div>
 <!-- FAB: floating publish button, mobile only -->

@@ -75,14 +75,16 @@
 <?php if (!empty($localDrafts)): ?>
 <div class="group-label fade">Borradores locales</div>
 <div class="ep-list fade" style="background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:.25rem .85rem;margin-bottom:1.75rem">
-  <?php foreach (array_slice($localDrafts, 0, 3) as $ld): ?>
-  <div class="ep-item">
+  <?php foreach (array_slice($localDrafts, 0, 3) as $ld):
+    $draftUrl = 'index.php?page=publish&podcast=' . urlencode($activePodcast) . '&draft_id=' . urlencode($ld['draft_id']);
+  ?>
+  <a href="<?= $draftUrl ?>" class="ep-item" style="text-decoration:none;color:inherit">
     <div class="ep-info">
-      <div class="ep-title"><?= htmlspecialchars($ld['title'] ?: 'Sin titulo') ?></div>
-      <div class="ep-meta">Guardado <?= htmlspecialchars($ld['saved_at'] ?? '') ?></div>
+      <div class="ep-title" style="color:var(--green)"><?= htmlspecialchars($ld['title'] ?: 'Sin titulo') ?></div>
+      <div class="ep-meta">Guardado <?= htmlspecialchars($ld['saved_at'] ?? '') ?><?php if(!empty($ld['episode_number'])): ?> &middot; Ep.<?= (int)$ld['episode_number'] ?><?php endif; ?></div>
     </div>
-    <a href="index.php?page=publish&podcast=<?= urlencode($activePodcast) ?>&draft_id=<?= urlencode($ld['draft_id']) ?>" class="btn btn-ghost btn-sm">Editar</a>
-  </div>
+    <span class="ep-draft">retomar &rarr;</span>
+  </a>
   <?php endforeach; ?>
   <?php if (count($localDrafts) > 3): ?>
   <div style="padding:.5rem 0;text-align:center">
