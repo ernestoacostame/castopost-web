@@ -104,13 +104,14 @@ $draftId = $editDraft['draft_id'] ?? '';
   <div class="field-row">
     <div class="field">
       <label for="ep-season">Temporada</label>
-      <input type="number" id="ep-season" name="season_number" min="1" placeholder="1" value="<?= htmlspecialchars($v['season_number'] ?? '') ?>">
+      <input type="number" id="ep-season" name="season_number" min="1" placeholder="1" 
+             value="<?= htmlspecialchars($v['season_number'] ?? $defaultSeason ?? '') ?>">
     </div>
     <div class="field">
-      <label for="ep-num">Episodio <span class="sub">(sig: <?= $nextEpisodeNumber ?>)</span></label>
+      <label for="ep-num">Episodio <span class="sub">(auto según temporada)</span></label>
       <input type="number" id="ep-num" name="episode_number" min="0"
-             placeholder="<?= $nextEpisodeNumber ?>"
-             value="<?= htmlspecialchars($v['episode_number'] ?? $nextEpisodeNumber) ?>">
+             placeholder="Auto"
+             value="<?= htmlspecialchars($v['episode_number'] ?? $defaultEpisode ?? '') ?>">
     </div>
   </div>
 
@@ -318,6 +319,98 @@ function updatePreview(){
   if(el) el.addEventListener('input', updatePreview);
 });
 updatePreview();
+
+// AUTOMATIC EPISODE NUMBER BY SEASON
+(function(){
+    // Convert PHP array to JavaScript object
+    const episodesBySeason = <?= json_encode($episodesBySeason) ?>;
+    
+    const seasonInput = document.getElementById('ep-season');
+    const episodeInput = document.getElementById('ep-num');
+    
+    // Track if episode number was manually modified
+    let episodeManuallyChanged = false;
+    
+    // Store original episode number when page loads (if any)
+    const originalEpisodeValue = episodeInput.value;
+    
+    // Function to update episode number based on season
+    function updateEpisodeBySeason() {
+        if (episodeManuallyChanged && episodeInput.value !== '') {
+            // User manually changed the episode number, don't auto-update
+            return;
+        }
+        
+        const season = seasonInput.value;
+        
+        if (season === '' || season === null) {
+            // No season selected
+            if (originalEpisodeValue === '') {
+                episodeInput.value = '';
+            }
+            return;
+        }
+        
+        if (episodesBySeason[season]) {
+            // Season exists, set to last episode + 1
+            episodeInput.value = parseInt(episodesBySeason[season]) + 1;
+        } else {
+            // New season, start at 1
+            episodeInput.value = 1;
+        }
+    }
+
+    // Store initial season and episode values for tracking
+    let initialSeasonValue = seasonInput.value;
+    let initialEpisodeValue = episodeInput.value;
+
+    // Listen for season changes
+    seasonInput.addEventListener('change', function() {
+        // Only mark as manually changed if user actually typed something different
+        if (this.value !== initialSeasonValue) {
+            episodeManuallyChanged = false; // Reset manual change when season changes
+        }
+        updateEpisodeBySeason();
+    });
+
+    seasonInput.addEventListener('input', function() {
+        updateEpisodeBySeason();
+    });
+    
+    // Listen for manual episode number changes
+    episodeInput.addEventListener('input', function() {
+        if (this.value !== '') {
+            episodeManuallyChanged = true;
+        }
+    });
+    
+    // Also update when page loads if season is already set
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if we have initial values from PHP
+        if (seasonInput.value !== '' && episodeInput.value !== '') {
+            // We have values from PHP, don't mark as manually changed yet
+            // The user hasn't interacted with the episode field
+            initialSeasonValue = seasonInput.value;
+            initialEpisodeValue = episodeInput.value;
+        } else if (seasonInput.value !== '') {
+            // Only season is set, update episode
+            updateEpisodeBySeason();
+        }
+        
+        // If we're editing a draft with a season but no episode number,
+        // auto-fill the episode number
+        if (seasonInput.value !== '' && episodeInput.value === '' && !episodeManuallyChanged) {
+            updateEpisodeBySeason();
+        }
+    });
+    
+    // Reset manual change flag if user clears episode number
+    episodeInput.addEventListener('change', function() {
+        if (this.value === '') {
+            episodeManuallyChanged = false;
+        }
+    });
+})();
 
 // SAVE DRAFT
 document.getElementById('btnSaveDraft')?.addEventListener('click', function(){

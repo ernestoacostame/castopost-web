@@ -215,17 +215,63 @@ if ($auth->isLoggedIn() && in_array($page, ['dashboard', 'episodes', 'drafts', '
     }
 }
 
-// ── Next episode number ───────────────────────────────────
+// ── Next episode number per season ───────────────────────────────────
 $nextEpisodeNumber = 1;
+$episodesBySeason = []; // Nuevo: para guardar el último episodio por temporada
+$lastSeason = null;
+$lastEpisode = null;
+
 if ($page === 'publish' && $podcastId) {
     try {
-        $recent = $castopod->getRecentEpisodes($podcastId, 5);
+        $recent = $castopod->getRecentEpisodes($podcastId, 20); // Aumentar para tener suficiente datos
         $nums = array_filter(array_map(fn($e) => $e['number'] ?? $e['episode_number'] ?? null, $recent));
         if ($nums) $nextEpisodeNumber = max($nums) + 1;
-    } catch (Exception $e) { /* keep 1 */ }
+        
+        // Calcular el último episodio por temporada
+        foreach ($recent as $ep) {
+            $season = $ep['season_number'] ?? null;
+            $epNum = $ep['number'] ?? $ep['episode_number'] ?? null;
+            if ($season !== null && $epNum !== null) {
+                if (!isset($episodesBySeason[$season]) || $epNum > $episodesBySeason[$season]) {
+                    $episodesBySeason[$season] = $epNum;
+                }
+                // Calcular la última temporada y episodio
+                if ($lastSeason === null || $season > $lastSeason || 
+                    ($season == $lastSeason && $epNum > $lastEpisode)) {
+                    $lastSeason = $season;
+                    $lastEpisode = $epNum;
+                }
+            }
+        }
+    } catch (Exception $e) { /* keep defaults */ }
 } elseif (!empty($episodes)) {
     $nums = array_filter(array_map(fn($e) => $e['number'] ?? $e['episode_number'] ?? null, $episodes));
     if ($nums) $nextEpisodeNumber = max($nums) + 1;
+    
+    // Calcular el último episodio por temporada desde todos los episodios
+    foreach ($episodes as $ep) {
+        $season = $ep['season_number'] ?? null;
+        $epNum = $ep['number'] ?? $ep['episode_number'] ?? null;
+        if ($season !== null && $epNum !== null) {
+            if (!isset($episodesBySeason[$season]) || $epNum > $episodesBySeason[$season]) {
+                $episodesBySeason[$season] = $epNum;
+            }
+            // Calcular la última temporada y episodio
+            if ($lastSeason === null || $season > $lastSeason || 
+                ($season == $lastSeason && $epNum > $lastEpisode)) {
+                $lastSeason = $season;
+                $lastEpisode = $epNum;
+            }
+        }
+    }
+}
+
+// Si encontramos una última temporada, calcular el próximo episodio
+$defaultSeason = null;
+$defaultEpisode = null;
+if ($lastSeason !== null && $lastEpisode !== null) {
+    $defaultSeason = $lastSeason;
+    $defaultEpisode = $lastEpisode + 1;
 }
 
 // ── Load draft to edit if requested ──────────────────────
@@ -240,5 +286,10 @@ $templates   = $templateSt->all();
 
 // ── Build nav podcast list ────────────────────────────────
 $allPodcasts = $store->all();
+
+// Pasar episodios por temporada y valores por defecto al template
+$episodesBySeason = $episodesBySeason ?? [];
+$defaultSeason = $defaultSeason ?? null;
+$defaultEpisode = $defaultEpisode ?? null;
 
 include 'templates/layout.php';
