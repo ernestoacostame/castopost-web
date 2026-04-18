@@ -137,10 +137,18 @@ class CastopodAPI {
     ): array {
         // Step 1 - resolve podcast id
         $podcastId = $this->getPodcastIdByHandle($podcastHandle);
-
-        // Step 2 - convert to MP3 and normalize to -16 LUFS (all formats)
+        
+        // Step 2 - obtener nivel LUFS (por defecto -16)
+        $lufsLevel = -16.0;
+        if (!empty($fields['lufs_level'])) {
+            $lufsLevel = (float) $fields['lufs_level'];
+        } elseif (!empty($_POST['lufs_level'])) {
+            $lufsLevel = (float) $_POST['lufs_level'];
+        }
+        
+        // Convertir a MP3 con normalización LUFS
         if ($audioFile && !empty($audioFile['tmp_name'])) {
-            $audioFile = $this->ensureMp3($audioFile);
+            $audioFile = $this->ensureMp3($audioFile, $lufsLevel);
             $this->validateAudioFile($audioFile);
         } elseif (empty($fields['audio_url'] ?? '')) {
             throw new Exception('Debes subir un archivo de audio o proporcionar una URL.');
@@ -218,44 +226,49 @@ class CastopodAPI {
     // Target: -16 LUFS integrated, -1.5 dBTP true peak, 11 LU range
     // Applied to ALL audio uploads, not just WebM recordings
     // -------------------------------------------------------
-    private function ensureMp3(array $file): array {
+    private function ensureMp3(array $file, float $lufsLevel = -16.0): array {
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
+        
         $ffmpeg = trim((string) shell_exec('which ffmpeg 2>/dev/null'));
         if (empty($ffmpeg)) {
             throw new Exception(
-                'FFmpeg no esta instalado. Instala con: sudo apt install ffmpeg'
+                'FFmpeg no está instalado. Instala con: sudo apt install ffmpeg'
             );
         }
-
+        
         if (!is_dir(UPLOAD_TMP_DIR)) mkdir(UPLOAD_TMP_DIR, 0700, true);
-
+        
         $input = $file['tmp_name'];
         $normalizedName = preg_replace('/\.(webm|opus|ogg|mp3|m4a|wav|flac|aac)$/i', '.mp3', $file['name']);
         $out = UPLOAD_TMP_DIR . '/norm_' . uniqid() . '.mp3';
-
-        // Pass 1: measure loudness stats
+        
+        // Validar nivel LUFS (entre -70 y 0)
+        $lufsLevel = max(-70, min(0, $lufsLevel));
+        
+        // Pass 1: medir estadísticas de loudness
         $measureCmd = sprintf(
-            '%s -y -i %s -vn -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json -f null /dev/null 2>&1',
+            '%s -y -i %s -vn -af loudnorm=I=%s:TP=-1.5:LRA=11:print_format=json -f null /dev/null 2>&1',
             escapeshellarg($ffmpeg),
-            escapeshellarg($input)
+            escapeshellarg($input),
+            escapeshellarg($lufsLevel)
         );
         $measureOutput = (string) shell_exec($measureCmd);
-
-        // Extract JSON from FFmpeg stderr output
+        
+        // Extraer JSON de la salida de FFmpeg
         $stats = null;
         if ($measureOutput && preg_match('/\{[^}]+\}/s', $measureOutput, $m)) {
             $stats = json_decode($m[0], true);
         }
-
-        // Pass 2: apply normalization with measured values
+        
+        // Pass 2: aplicar normalización con valores medidos
         if ($stats &&
             isset($stats['input_i'], $stats['input_tp'],
                   $stats['input_lra'], $stats['input_thresh'],
                   $stats['target_offset'])) {
-            // Two-pass linear normalization - most accurate
+            // Normalización lineal de dos pasos - más precisa
             $filter = sprintf(
-                'loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true',
+                'loudnorm=I=%s:TP=-1.5:LRA=11:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true',
+                escapeshellarg($lufsLevel),
                 $stats['input_i'],
                 $stats['input_tp'],
                 $stats['input_lra'],
@@ -263,10 +276,10 @@ class CastopodAPI {
                 $stats['target_offset']
             );
         } else {
-            // Fallback: single-pass if measurement failed
-            $filter = 'loudnorm=I=-16:TP=-1.5:LRA=11';
+            // Fallback: un solo paso si falla la medición
+            $filter = sprintf('loudnorm=I=%s:TP=-1.5:LRA=11', escapeshellarg($lufsLevel));
         }
-
+        
         $convertCmd = sprintf(
             '%s -y -i %s -vn -af %s -acodec libmp3lame -ab 192k -ar 44100 %s 2>&1',
             escapeshellarg($ffmpeg),
@@ -275,15 +288,15 @@ class CastopodAPI {
             escapeshellarg($out)
         );
         $convertLog = (string) shell_exec($convertCmd);
-
+        
         if (!file_exists($out) || filesize($out) < 1024) {
             throw new Exception(
                 'FFmpeg no pudo procesar el audio. Log: ' . substr($convertLog, -500)
             );
         }
-
+        
         $this->tmpFiles[] = $out;
-
+        
         return [
             'tmp_name' => $out,
             'name'     => $normalizedName,

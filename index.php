@@ -87,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'save_draft') {
         'published_at'   => $_POST['published_at']   ?? '',
         'explicit'       => !empty($_POST['explicit']) ? '1' : '',
         'draft_id'       => $_POST['draft_id']       ?? '',
+        'lufs_level'     => $_POST['lufs_level']     ?? '-16',
     ];
     $id = $draftSt->save_draft($activePodcast, $fields);
     $success = 'Borrador guardado.';
@@ -122,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
             'explicit'       => !empty($_POST['explicit']),
             'slug'           => trim($_POST['slug'] ?? ''),
             'published_at'   => $_POST['published_at']   ?? date('Y-m-d\TH:i:s'),
+            'lufs_level'     => $_POST['lufs_level']     ?? '-16',
         ];
         if (empty($data['title'])) throw new Exception('El titulo es obligatorio.');
 

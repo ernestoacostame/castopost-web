@@ -163,6 +163,35 @@ $draftId = $editDraft['draft_id'] ?? '';
 
   <div class="divider"></div>
 
+  <!-- LUFS NORMALIZATION -->
+  <div class="group-label">Normalización de audio (LUFS)</div>
+  <div class="field">
+    <p style="margin-top:0;margin-bottom:.5rem;font-size:.85rem;color:var(--text3)">
+      Selecciona el nivel LUFS al que normalizar el audio. Valores comunes: podcast (-16), música (-14), voiceover (-24)
+    </p>
+    
+    <div class="lufs-buttons" style="display:flex;gap:.5rem;margin-bottom:.8rem">
+      <button type="button" class="btn btn-ghost btn-sm lufs-btn" data-lufs="-14">-14</button>
+      <button type="button" class="btn btn-ghost btn-sm lufs-btn active" data-lufs="-16">-16</button>
+      <button type="button" class="btn btn-ghost btn-sm lufs-btn" data-lufs="-18">-18</button>
+      <button type="button" class="btn btn-ghost btn-sm lufs-btn" data-lufs="-24">-24</button>
+    </div>
+    
+    <div style="display:flex;align-items:center;gap:.5rem">
+      <label for="lufs_custom" style="font-size:.85rem">Otro valor:</label>
+      <input type="number" id="lufs_custom" 
+             name="lufs_custom" 
+             min="-70" max="0" step="0.1"
+             placeholder="-19.5"
+             style="width:120px;padding:.3rem .5rem;font-size:.85rem">
+      <span style="font-size:.75rem;color:var(--text3)">LUFS</span>
+    </div>
+  </div>
+
+  <input type="hidden" name="lufs_level" id="lufs_level" value="-16">
+
+  <div class="divider"></div>
+
   <!-- ACTIONS -->
   <div style="display:flex;gap:.6rem;flex-wrap:wrap">
     <button type="submit" class="btn btn-primary" style="flex:1">
@@ -190,6 +219,7 @@ $draftId = $editDraft['draft_id'] ?? '';
   <input type="hidden" name="published_at"   id="df_date">
   <input type="hidden" name="explicit"       id="df_explicit">
   <input type="hidden" name="audio_url"      id="df_audiourl">
+  <input type="hidden" name="lufs_level"     id="df_lufs" value="-16">
 </form>
 
 <script>
@@ -412,6 +442,52 @@ updatePreview();
     });
 })();
 
+// LUFS SELECTION
+(function(){
+  const lufsButtons = document.querySelectorAll('.lufs-btn');
+  const lufsCustom = document.getElementById('lufs_custom');
+  const lufsHidden = document.getElementById('lufs_level');
+  
+  // Manejar clic en botones LUFS
+  lufsButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      // Remover clase 'active' de todos los botones
+      lufsButtons.forEach(b => b.classList.remove('active'));
+      
+      // Añadir 'active' al botón clickeado
+      this.classList.add('active');
+      
+      // Establecer valor en campo oculto
+      const val = this.getAttribute('data-lufs');
+      lufsHidden.value = val;
+      lufsCustom.value = '';
+    });
+  });
+  
+  // Manejar entrada personalizada
+  lufsCustom.addEventListener('input', function() {
+    // Remover 'active' de todos los botones
+    lufsButtons.forEach(b => b.classList.remove('active'));
+    
+    // Actualizar valor oculto si hay entrada
+    if (this.value.trim() !== '') {
+      lufsHidden.value = parseFloat(this.value).toFixed(1);
+    }
+  });
+  
+  // Resetear cuando se borra el campo personalizado
+  lufsCustom.addEventListener('change', function() {
+    if (this.value.trim() === '') {
+      // Restaurar botón -16 como predeterminado
+      const defaultBtn = document.querySelector('.lufs-btn[data-lufs="-16"]');
+      if (defaultBtn) {
+        defaultBtn.classList.add('active');
+        lufsHidden.value = '-16';
+      }
+    }
+  });
+})();
+
 // SAVE DRAFT
 document.getElementById('btnSaveDraft')?.addEventListener('click', function(){
   document.getElementById('df_title').value   = document.getElementById('ep-title')?.value||'';
@@ -423,6 +499,7 @@ document.getElementById('btnSaveDraft')?.addEventListener('click', function(){
   document.getElementById('df_date').value    = document.getElementById('ep-date')?.value||'';
   document.getElementById('df_explicit').value= document.querySelector('input[name="explicit"]')?.checked?'1':'';
   document.getElementById('df_audiourl').value= document.getElementById('audio_url')?.value||'';
+  document.getElementById('df_lufs').value    = document.getElementById('lufs_level')?.value || '-16';
   document.getElementById('draftForm').submit();
 });
 </script>
