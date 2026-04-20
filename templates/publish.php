@@ -223,6 +223,63 @@ $draftId = $editDraft['draft_id'] ?? '';
 </form>
 
 <script>
+// Check for MediaRecorder support with more detail
+const recorderBox = document.getElementById('recorderBox');
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    recorderBox.innerHTML = 
+        '<div style="color:var(--text3);padding:1rem;text-align:center">' +
+        'getUserMedia no está soportado en este navegador.<br>' +
+        'Asegúrate de usar HTTPS en producción.</div>';
+} else if (!window.MediaRecorder) {
+    recorderBox.innerHTML = 
+        '<div style="color:var(--text3);padding:1rem;text-align:center">' +
+        'MediaRecorder no está soportado en este navegador.<br>' +
+        'Usa Firefox 25+, Chrome 47+, Edge 79+, o Safari 14.1+.</div>';
+}
+
+// Debug: Log browser info
+console.log('Browser info:', {
+    userAgent: navigator.userAgent,
+    mediaDevices: !!navigator.mediaDevices,
+    getUserMedia: !!navigator.mediaDevices?.getUserMedia,
+    MediaRecorder: !!window.MediaRecorder,
+    availableMimeTypes: (() => {
+        const types = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/ogg',
+            'audio/mp4',
+            'audio/mp4;codecs=mp4a'
+        ];
+        return types.filter(t => MediaRecorder.isTypeSupported(t));
+    })()
+});
+
+// Test microphone access
+async function testMicrophone() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true 
+        });
+        const tracks = stream.getTracks();
+        console.log('Microphone test successful, tracks:', tracks.length);
+        tracks.forEach(track => track.stop());
+        return true;
+    } catch (e) {
+        console.error('Microphone test failed:', e);
+        return false;
+    }
+}
+
+// Run test on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    const hasMic = await testMicrophone();
+    if (!hasMic) {
+        console.warn('Microphone access may be blocked by browser');
+    }
+});
+
 // RECORDER
 (function(){
   let mr, chunks=[], stream, raf, secs=0, iv, paused=false, analyser, dataArr;
@@ -263,30 +320,191 @@ $draftId = $editDraft['draft_id'] ?? '';
   requestAnimationFrame(resizeCanvas);
 
   btnRec.addEventListener('click',async()=>{
-    try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(e){ status.textContent='Sin acceso al microfono'; return; }
-    const aC=new AudioContext(); analyser=aC.createAnalyser(); analyser.fftSize=2048;
-    dataArr=new Uint8Array(analyser.frequencyBinCount);
-    aC.createMediaStreamSource(stream).connect(analyser); draw();
-    chunks=[]; paused=false; secs=0;
-    mr=new MediaRecorder(stream,{mimeType:'audio/webm;codecs=opus'});
-    mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
-    mr.onstop=()=>{
-      cancelAnimationFrame(raf); ctx.clearRect(0,0,canvas.width,canvas.height);
-      const blob=new Blob(chunks,{type:'audio/webm'});
-      playback.src=URL.createObjectURL(blob); playback.style.display='block';
-      const r=new FileReader(); r.onloadend=()=>{recData.value=r.result; recName.value='grabacion-'+Date.now()+'.webm';}; r.readAsDataURL(blob);
-      stream.getTracks().forEach(t=>t.stop());
+    try{ 
+        // Try with specific constraints for Firefox compatibility
+        const constraints = {
+            audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints); 
+    }
+    catch(e){ 
+        status.textContent='Sin acceso al microfono: ' + e.message; 
+        return; 
+    }
+    
+    const aC = new AudioContext(); 
+    analyser = aC.createAnalyser(); 
+    analyser.fftSize = 2048;
+    dataArr = new Uint8Array(analyser.frequencyBinCount);
+    aC.createMediaStreamSource(stream).connect(analyser); 
+    draw();
+    
+    chunks = []; 
+    paused = false; 
+    secs = 0;
+    
+    // Get available MIME types for the current browser
+    const mimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/mp4;codecs=mp4a',
+        ''
+    ];
+    
+    let selectedMimeType = '';
+    for (const mime of mimeTypes) {
+        if (!mime || MediaRecorder.isTypeSupported(mime)) {
+            selectedMimeType = mime;
+            break;
+        }
+    }
+    
+    console.log('Selected MIME type:', selectedMimeType);
+    
+    // Try to create MediaRecorder with options
+    let options = {};
+    if (selectedMimeType) {
+        options.mimeType = selectedMimeType;
+    }
+    
+    // Add audio bits per second for better quality
+    options.audioBitsPerSecond = 128000;
+    
+    try {
+        mr = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn('Failed to create MediaRecorder with options:', e);
+        // Fallback to default constructor
+        try {
+            mr = new MediaRecorder(stream);
+        } catch (e2) {
+            status.textContent = 'Error al crear grabador: ' + e2.message;
+            stream.getTracks().forEach(t => t.stop());
+            return;
+        }
+    }
+    
+    // Handle MediaRecorder errors
+    mr.onerror = function(event) {
+        console.error('MediaRecorder error:', event.error);
+        status.textContent = 'Error en grabación: ' + event.error;
+        btnRec.disabled = false;
+        btnPause.disabled = true;
+        btnStop.disabled = true;
+        clearInterval(iv);
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+        }
     };
-    mr.start(1000); iv=setInterval(()=>{if(!paused){secs++;timer.textContent=fmt(secs);}},1000);
-    timer.classList.add('on'); status.textContent='Grabando...';
-    btnRec.disabled=true; btnPause.disabled=false; btnStop.disabled=false; btnDisc.style.display='none';
-    playback.style.display='none'; recData.value='';
+    
+    mr.ondataavailable = e => {
+        if (e.data && e.data.size > 0) {
+            chunks.push(e.data);
+        }
+    };
+    
+    mr.onstop = () => {
+        cancelAnimationFrame(raf); 
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (chunks.length === 0) {
+            status.textContent = 'Error: No se capturó audio';
+            return;
+        }
+        
+        const blob = new Blob(chunks, { 
+            type: selectedMimeType || mr.mimeType || 'audio/webm' 
+        });
+        
+        console.log('Recording blob size:', blob.size, 'type:', blob.type);
+        
+        if (blob.size === 0) {
+            status.textContent = 'Error: Grabación vacía';
+            return;
+        }
+        
+        playback.src = URL.createObjectURL(blob); 
+        playback.style.display = 'block';
+        
+        const r = new FileReader(); 
+        r.onloadend = () => {
+            recData.value = r.result; 
+            
+            // Determine file extension based on MIME type
+            let extension = 'webm';
+            const mime = selectedMimeType || mr.mimeType || '';
+            if (mime.includes('ogg')) {
+                extension = 'ogg';
+            } else if (mime.includes('mp4')) {
+                extension = 'mp4';
+            } else if (mime.includes('webm')) {
+                extension = 'webm';
+            }
+            
+            recName.value = 'grabacion-' + Date.now() + '.' + extension;
+            status.textContent = 'Grabación completada (' + Math.round(blob.size / 1024) + ' KB)';
+        }; 
+        r.readAsDataURL(blob);
+        
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+        }
+    };
+    
+    // Start recording with timeslice of 1000ms (1 second)
+    try {
+        mr.start(1000); 
+    } catch (e) {
+        status.textContent = 'Error al iniciar grabación: ' + e.message;
+        stream.getTracks().forEach(t => t.stop());
+        return;
+    }
+    
+    iv = setInterval(() => {
+        if (!paused) {
+            secs++;
+            timer.textContent = fmt(secs);
+        }
+    }, 1000);
+    
+    timer.classList.add('on'); 
+    status.textContent = 'Grabando...';
+    btnRec.disabled = true; 
+    btnPause.disabled = false; 
+    btnStop.disabled = false; 
+    btnDisc.style.display = 'none';
+    playback.style.display = 'none'; 
+    recData.value = '';
   });
   btnPause.addEventListener('click',()=>{
     if(!mr) return;
-    if(paused){mr.resume();paused=false;timer.classList.add('on');status.textContent='Grabando...';btnPause.textContent='Pausar';}
-    else{mr.pause();paused=true;timer.classList.remove('on');status.textContent='En pausa';btnPause.textContent='Reanudar';}
+    
+    try {
+        if(paused){
+            mr.resume();
+            paused = false;
+            timer.classList.add('on');
+            status.textContent = 'Grabando...';
+            btnPause.textContent = 'Pausar';
+        } else {
+            mr.pause();
+            paused = true;
+            timer.classList.remove('on');
+            status.textContent = 'En pausa';
+            btnPause.textContent = 'Reanudar';
+        }
+    } catch (e) {
+        console.error('Pause/resume error:', e);
+        status.textContent = 'Error: ' + e.message;
+    }
   });
   btnStop.addEventListener('click',()=>{
     if(!mr)return; clearInterval(iv); timer.classList.remove('on'); status.textContent='Listo';
