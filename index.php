@@ -131,17 +131,113 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
         if (!empty($_FILES['audio_file']['name'])) {
             $audioFile = $_FILES['audio_file'];
         } elseif (!empty($_POST['recorded_audio_data'])) {
-            $base64  = preg_replace('/^data:[^;]+;base64,/', '', $_POST['recorded_audio_data']);
-            $tmpPath = UPLOAD_TMP_DIR . '/rec_' . uniqid() . '.webm';
-            if (!is_dir(UPLOAD_TMP_DIR)) mkdir(UPLOAD_TMP_DIR, 0700, true);
-            file_put_contents($tmpPath, base64_decode($base64));
+            $rawData = $_POST['recorded_audio_data'];
+            error_log('[DEBUG] recorded_audio_data length: ' . strlen($rawData));
+
+            if (strlen($rawData) < 100) {
+                throw new Exception('Los datos de audio grabado son demasiado cortos (menos de 100 bytes). Posiblemente no se grabó correctamente.');
+            }
+
+            $base64 = preg_replace('/^data:[^;]+;base64,/', '', $rawData);
+            if (empty($base64)) {
+                throw new Exception('El data URL no contiene parte base64 válida.');
+            }
+
+            $cleanBase64 = str_replace(["\r", "\n", ' '], '', $base64);
+            $decoded = base64_decode($cleanBase64, true);
+            if ($decoded === false) {
+                throw new Exception('Error al decodificar base64: los datos no son base64 válidos.');
+            }
+            $decodedLen = strlen($decoded);
+            error_log('[DEBUG] Decoded size: ' . $decodedLen . ' bytes');
+            if ($decodedLen < 100) {
+                throw new Exception('El audio decodificado es demasiado pequeño (' . $decodedLen . ' bytes).');
+            }
+
+            $tmpDir = UPLOAD_TMP_DIR;
+            error_log('[DEBUG] UPLOAD_TMP_DIR = ' . $tmpDir);
+            if (!is_dir($tmpDir)) {
+                error_log('[DEBUG] Creando directorio temporal: ' . $tmpDir);
+                if (!mkdir($tmpDir, 0777, true)) {
+                    throw new Exception('No se pudo crear el directorio temporal: ' . $tmpDir);
+                }
+                // Ensure permissions are set correctly
+                chmod($tmpDir, 0777);
+            } else {
+                error_log('[DEBUG] Directorio temporal ya existe. Permisos: ' . substr(sprintf('%o', fileperms($tmpDir)), -4));
+            }
+
+            $tmpPath = $tmpDir . '/rec_' . uniqid() . '.webm';
+            error_log('[DEBUG] Intentando escribir archivo: ' . $tmpPath);
+            $written = file_put_contents($tmpPath, $decoded, LOCK_EX);
+            if ($written === false) {
+                throw new Exception('Error al escribir el archivo de audio en ' . $tmpPath);
+            }
+            error_log('[DEBUG] Archivo escrito: ' . $tmpPath . ' - ' . $written . ' bytes');
+
+            clearstatcache(true, $tmpPath);
+            $fileSize = filesize($tmpPath);
+            error_log('[DEBUG] filesize después de clearstatcache: ' . ($fileSize === false ? 'false' : $fileSize));
+            if ($fileSize === false || $fileSize === 0) {
+                unlink($tmpPath);
+                throw new Exception('El archivo grabado está vacío después de escribir.');
+            }
+
+            $mimeFromPost   = $_POST['recorded_audio_mime'] ?? '';
+            $mimeFromDataUrl = '';
+            if (preg_match('/^data:([a-z]+\\/[a-z0-9.+-]+);base64,/', $rawData, $m)) {
+                $mimeFromDataUrl = $m[1];
+            }
+
+            $finalMime = '';
+            if (str_starts_with($mimeFromPost, 'audio/')) {
+                $finalMime = $mimeFromPost;
+            } elseif (str_starts_with($mimeFromDataUrl, 'audio/')) {
+                $finalMime = $mimeFromDataUrl;
+            } else {
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $detectedMime = $finfo->file($tmpPath);
+                if (str_starts_with($detectedMime, 'audio/')) {
+                    $finalMime = $detectedMime;
+                } else {
+                    // Fallback: asumir audio/webm (es el formato por defecto del grabador)
+                    $finalMime = 'audio/webm';
+                    error_log('[DEBUG] MIME no detectado, asumiendo audio/webm. Detected: ' . ($detectedMime ?: 'none'));
+                }
+            }
+
+            $extMap = [
+                'audio/webm'  => 'webm',
+                'audio/ogg'   => 'ogg',
+                'audio/mp4'   => 'mp4',
+                'audio/mpeg'  => 'mp3',
+                'audio/aac'   => 'aac',
+                'audio/wav'   => 'wav',
+                'audio/flac'  => 'flac',
+                'audio/opus'  => 'opus',
+                'audio/x-m4a' => 'm4a',
+            ];
+            $ext = $extMap[$finalMime] ?? 'webm';
+
+            $audioName = $_POST['recorded_audio_name'] ?? 'grabacion.' . pathinfo($tmpPath, PATHINFO_EXTENSION);
+            $audioName = preg_replace('/\\.[^.]+$/', '', $audioName) . '.' . $ext;
+
+            if ($ext !== 'webm') {
+                $newPath = preg_replace('/\\.webm$/', '.' . $ext, $tmpPath);
+                if (rename($tmpPath, $newPath)) {
+                    $tmpPath = $newPath;
+                    error_log('[DEBUG] Archivo renombrado a: ' . $tmpPath);
+                }
+            }
+
             $audioFile = [
                 'tmp_name' => $tmpPath,
-                'name'     => $_POST['recorded_audio_name'] ?? 'grabacion.webm',
-                'type'     => 'audio/webm',
+                'name'     => $audioName,
+                'type'     => $finalMime,
                 'size'     => filesize($tmpPath),
                 '_cleanup' => true,
             ];
+            error_log('[DEBUG] Audio file listo: ' . json_encode($audioFile));
         } elseif (empty($_POST['audio_url'])) {
             throw new Exception('Debes grabar, subir o enlazar un archivo de audio.');
         } else {
@@ -151,9 +247,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
         $coverFile     = !empty($_FILES['cover_image']['name']) ? $_FILES['cover_image'] : null;
         $podcastHandle = !empty($_POST['podcast_handle']) ? trim($_POST['podcast_handle']) : CASTOPOD_PODCAST_HANDLE;
 
+        error_log('[DEBUG] Antes de llamar a publishEpisode. audioFile: ' . json_encode($audioFile));
         $result = $castopod->publishEpisode($podcastHandle, CASTOPOD_USER_ID, $data, $audioFile, $coverFile);
+        error_log('[DEBUG] Después de publishEpisode. Resultado: ' . json_encode($result));
 
         if (!empty($audioFile['_cleanup']) && file_exists($audioFile['tmp_name'])) {
+            error_log('[DEBUG] Limpiando archivo temporal: ' . $audioFile['tmp_name']);
             unlink($audioFile['tmp_name']);
         }
 
@@ -166,7 +265,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
 
     } catch (Exception $e) {
         $error = $e->getMessage();
+        error_log('[DEBUG] Excepción en publish: ' . $e->getMessage());
+        error_log('[DEBUG] Trace: ' . $e->getTraceAsString());
         if (!empty($audioFile['_cleanup']) && !empty($audioFile['tmp_name']) && file_exists($audioFile['tmp_name'])) {
+            error_log('[DEBUG] Limpiando archivo temporal en catch: ' . $audioFile['tmp_name']);
             unlink($audioFile['tmp_name']);
         }
     }
@@ -280,6 +382,12 @@ if ($lastSeason !== null && $lastEpisode !== null) {
 $editDraft = null;
 if ($page === 'publish' && !empty($_GET['draft_id'])) {
     $editDraft = $draftSt->get_draft($activePodcast, $_GET['draft_id']);
+    if ($editDraft === null) {
+        // No se encontró el borrador: redirigir con error
+        $error = 'No se encontró el borrador solicitado (ID: ' . htmlspecialchars($_GET['draft_id']) . '). Puede que haya sido eliminado o que el podcast no coincida.';
+        // Opcional: eliminar el draft_id de la URL para evitar que se muestre como edición
+        unset($_GET['draft_id']);
+    }
 }
 
 // ── Local drafts for sidebar ──────────────────────────────

@@ -228,6 +228,7 @@ class CastopodAPI {
     // -------------------------------------------------------
     private function ensureMp3(array $file, float $lufsLevel = -16.0): array {
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        error_log('[DEBUG] ensureMp3 called. Input file: ' . json_encode($file));
         
         $ffmpeg = trim((string) shell_exec('which ffmpeg 2>/dev/null'));
         if (empty($ffmpeg)) {
@@ -235,29 +236,55 @@ class CastopodAPI {
                 'FFmpeg no está instalado. Instala con: sudo apt install ffmpeg'
             );
         }
+        error_log('[DEBUG] FFmpeg path: ' . $ffmpeg);
         
-        if (!is_dir(UPLOAD_TMP_DIR)) mkdir(UPLOAD_TMP_DIR, 0700, true);
+        if (!is_dir(UPLOAD_TMP_DIR)) {
+            error_log('[DEBUG] Creando UPLOAD_TMP_DIR desde ensureMp3: ' . UPLOAD_TMP_DIR);
+            mkdir(UPLOAD_TMP_DIR, 0777, true);
+            chmod(UPLOAD_TMP_DIR, 0777);
+        }
         
         $input = $file['tmp_name'];
+        error_log('[DEBUG] Input file path: ' . $input);
+        if (!file_exists($input)) {
+            throw new Exception('El archivo de audio no existe en la ubicación temporal: ' . $input);
+        }
+        $inputSize = filesize($input);
+        error_log('[DEBUG] Input file size: ' . $inputSize);
+        if ($inputSize === 0) {
+            throw new Exception('El archivo de audio está vacío: ' . $input);
+        }
         $normalizedName = preg_replace('/\.(webm|opus|ogg|mp3|m4a|wav|flac|aac)$/i', '.mp3', $file['name']);
         $out = UPLOAD_TMP_DIR . '/norm_' . uniqid() . '.mp3';
+        error_log('[DEBUG] Output file path: ' . $out);
         
         // Validar nivel LUFS (entre -70 y 0)
         $lufsLevel = max(-70, min(0, $lufsLevel));
+        error_log('[DEBUG] LUFS level: ' . $lufsLevel);
         
         // Pass 1: medir estadísticas de loudness
         $measureCmd = sprintf(
-            '%s -y -i %s -vn -af loudnorm=I=%s:TP=-1.5:LRA=11:print_format=json -f null /dev/null 2>&1',
+            '%s -y -i %s -vn -af loudnorm=I=%s:TP=-1.5:LRA=11:print_format=json -f null /dev/null',
             escapeshellarg($ffmpeg),
             escapeshellarg($input),
             escapeshellarg($lufsLevel)
         );
-        $measureOutput = (string) shell_exec($measureCmd);
+        error_log('[DEBUG] Measure command: ' . $measureCmd);
+        exec($measureCmd . ' 2>&1', $measureLines, $measureExitCode);
+        $measureOutput = implode("\n", $measureLines);
+        error_log('[DEBUG] Measure exit code: ' . $measureExitCode);
+        error_log('[DEBUG] Measure output (first 500 chars): ' . substr($measureOutput, 0, 500));
+        if ($measureExitCode !== 0) {
+            throw new Exception('FFmpeg falló al medir loudness. Log: ' . $measureOutput);
+        }
         
         // Extraer JSON de la salida de FFmpeg
         $stats = null;
         if ($measureOutput && preg_match('/\{[^}]+\}/s', $measureOutput, $m)) {
             $stats = json_decode($m[0], true);
+            error_log('[DEBUG] Stats parsed: ' . json_encode($stats));
+        } else {
+            error_log('[DEBUG] No stats JSON found in measure output');
         }
         
         // Pass 2: aplicar normalización con valores medidos
@@ -275,27 +302,37 @@ class CastopodAPI {
                 $stats['input_thresh'],
                 $stats['target_offset']
             );
+            error_log('[DEBUG] Using two-pass linear filter');
         } else {
             // Fallback: un solo paso si falla la medición
             $filter = sprintf('loudnorm=I=%s:TP=-1.5:LRA=11', escapeshellarg($lufsLevel));
+            error_log('[DEBUG] Using single-pass fallback filter');
         }
+        error_log('[DEBUG] Filter string: ' . $filter);
         
         $convertCmd = sprintf(
-            '%s -y -i %s -vn -af %s -acodec libmp3lame -ab 192k -ar 44100 %s 2>&1',
+            '%s -y -i %s -vn -af %s -acodec libmp3lame -ab 192k -ar 44100 %s',
             escapeshellarg($ffmpeg),
             escapeshellarg($input),
             escapeshellarg($filter),
             escapeshellarg($out)
         );
-        $convertLog = (string) shell_exec($convertCmd);
+        error_log('[DEBUG] Convert command: ' . $convertCmd);
+        exec($convertCmd . ' 2>&1', $convertLines, $convertExitCode);
+        $convertLog = implode("\n", $convertLines);
+        error_log('[DEBUG] Convert exit code: ' . $convertExitCode);
+        error_log('[DEBUG] Convert log (first 500 chars): ' . substr($convertLog, 0, 500));
         
-        if (!file_exists($out) || filesize($out) < 1024) {
+        if ($convertExitCode !== 0 || !file_exists($out) || filesize($out) < 1024) {
             throw new Exception(
-                'FFmpeg no pudo procesar el audio. Log: ' . substr($convertLog, -500)
+                'FFmpeg no pudo procesar el audio.' . "\n" .
+                'Código de salida: ' . $convertExitCode . "\n" .
+                'Log completo de FFmpeg:' . "\n" . $convertLog
             );
         }
         
         $this->tmpFiles[] = $out;
+        error_log('[DEBUG] Output file size: ' . filesize($out));
         
         return [
             'tmp_name' => $out,
@@ -385,10 +422,10 @@ class CastopodAPI {
     // -------------------------------------------------------
     private function slugify(string $text): string {
         $map = ['á'=>'a','à'=>'a','ä'=>'a','â'=>'a','ã'=>'a',
-                'é'=>'e','è'=>'e','ë'=>'e','ê'=>'e',
-                'í'=>'i','ì'=>'i','ï'=>'i','î'=>'i',
-                'ó'=>'o','ò'=>'o','ö'=>'o','ô'=>'o','õ'=>'o',
-                'ú'=>'u','ù'=>'u','ü'=>'u','û'=>'u','ñ'=>'n'];
+        'é'=>'e','è'=>'e','ë'=>'e','ê'=>'e',
+        'í'=>'i','ì'=>'i','ï'=>'i','î'=>'i',
+        'ó'=>'o','ò'=>'o','ö'=>'o','ô'=>'o','õ'=>'o',
+        'ú'=>'u','ù'=>'u','ü'=>'u','û'=>'u','ñ'=>'n'];
         $text = mb_strtolower(strtr($text, $map), 'UTF-8');
         $text = preg_replace('/[^a-z0-9\s-]/', '', $text);
         $text = preg_replace('/[\s-]+/', '-', trim($text));
@@ -403,5 +440,11 @@ class CastopodAPI {
         if ($file['size'] > MAX_AUDIO_SIZE) {
             throw new Exception('El archivo supera el límite de ' . round(MAX_AUDIO_SIZE/1024/1024) . ' MB.');
         }
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $allowedMime = ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/flac', 'audio/mp4', 'audio/x-m4a', 'audio/opus', 'audio/webm'];
+        if (!$mime || !in_array($mime, $allowedMime)) {
+            throw new Exception("Tipo MIME de audio no reconocido: {$mime}.");
+        }
     }
-}
+} // <--- Asegúrate de que este sea el ÚLTIMO cierre de llave del archivo

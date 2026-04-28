@@ -44,6 +44,7 @@ $draftId = $editDraft['draft_id'] ?? '';
     <audio id="recPlayback" controls style="display:none"></audio>
     <input type="hidden" name="recorded_audio_data" id="recData">
     <input type="hidden" name="recorded_audio_name" id="recName">
+    <input type="hidden" name="recorded_audio_mime" id="recMime">
   </div>
 
   <div class="or-line" style="margin:1rem 0">o sube un archivo</div>
@@ -350,10 +351,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Get available MIME types for the current browser
     const mimeTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
         'audio/ogg;codecs=opus',
         'audio/ogg',
+        'audio/webm;codecs=opus',
+        'audio/webm',
         'audio/mp4',
         'audio/mp4;codecs=mp4a',
         ''
@@ -426,33 +427,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         console.log('Recording blob size:', blob.size, 'type:', blob.type);
         
-        if (blob.size === 0) {
-            status.textContent = 'Error: Grabación vacía';
+        if (blob.size < 100) {
+            status.textContent = 'Error: Grabación demasiado corta o vacía (' + blob.size + ' bytes). Intenta de nuevo.';
             return;
         }
         
         playback.src = URL.createObjectURL(blob); 
         playback.style.display = 'block';
         
-        const r = new FileReader(); 
+        const r = new FileReader();
         r.onloadend = () => {
-            recData.value = r.result; 
-            
-            // Determine file extension based on MIME type
-            let extension = 'webm';
-            const mime = selectedMimeType || mr.mimeType || '';
-            if (mime.includes('ogg')) {
-                extension = 'ogg';
-            } else if (mime.includes('mp4')) {
-                extension = 'mp4';
-            } else if (mime.includes('webm')) {
-                extension = 'webm';
-            }
-            
-            recName.value = 'grabacion-' + Date.now() + '.' + extension;
-            status.textContent = 'Grabación completada (' + Math.round(blob.size / 1024) + ' KB)';
-        }; 
+          // CORRECCIÓN: Limpiar el prefijo data:audio/xxx;base64,
+          const fullResult = r.result;
+          const base64Clean = fullResult.split(',')[1];
+
+          // CORRECCIÓN: Usar getElementById para mayor precisión
+          document.getElementById('recData').value = base64Clean;
+
+          console.log('recData value length:', document.getElementById('recData').value.length);
+
+          // Determine file extension based on MIME type
+          let extension = 'webm';
+        const mime = selectedMimeType || mr.mimeType || '';
+        if (mime.includes('ogg')) {
+          extension = 'ogg';
+        } else if (mime.includes('mp4')) {
+          extension = 'mp4';
+        } else if (mime.includes('webm')) {
+          extension = 'webm';
+        }
+
+        recName.value = 'grabacion-' + Date.now() + '.' + extension;
+        status.textContent = 'Grabación completada (' + Math.round(blob.size / 1024) + ' KB)';
+        };
         r.readAsDataURL(blob);
+        // Store the real MIME type for server-side processing
+        document.getElementById('recMime').value = blob.type;
         
         if (stream) {
             stream.getTracks().forEach(t => t.stop());
@@ -482,7 +492,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnStop.disabled = false; 
     btnDisc.style.display = 'none';
     playback.style.display = 'none'; 
-    recData.value = '';
+    document.getElementsByName('recorded_audio_data')[0].value = '';
   });
   btnPause.addEventListener('click',()=>{
     if(!mr) return;
@@ -511,7 +521,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     mr.stop(); btnRec.disabled=false; btnPause.disabled=true; btnStop.disabled=true; btnDisc.style.display='inline-flex';
   });
   btnDisc.addEventListener('click',()=>{
-    playback.style.display='none'; recData.value=''; recName.value=''; secs=0;
+    playback.style.display='none'; document.getElementsByName('recorded_audio_data')[0].value=''; recName.value=''; secs=0;
     timer.textContent='00:00:00'; status.textContent='Listo para grabar';
     btnDisc.style.display='none'; ctx.clearRect(0,0,canvas.width,canvas.height);
   });
@@ -521,7 +531,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 document.getElementById('publishForm').addEventListener('submit',function(e){
   const hasFile=document.querySelector('input[name="audio_file"]')?.files.length>0;
   const hasUrl=document.getElementById('audio_url')?.value.trim()!=='';
-  const hasRec=document.getElementById('recData')?.value!=='';
+  const hasRec=document.getElementsByName('recorded_audio_data')[0]?.value!=='';
   if(!hasFile&&!hasUrl&&!hasRec){ e.preventDefault(); alert('Necesitas grabar, subir o enlazar un audio.'); }
 });
 
