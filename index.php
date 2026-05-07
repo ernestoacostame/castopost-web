@@ -7,6 +7,17 @@ require_once 'podcasts_store.php';
 require_once 'drafts_store.php';
 require_once 'templates_store.php';
 
+// ── CSRF Token ────────────────────────────────────────────
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
+function verify_csrf(): bool {
+    $token = $_POST['csrf_token'] ?? '';
+    return !empty($token) && hash_equals($_SESSION['csrf_token'] ?? '', $token);
+}
+
 $auth      = new Auth();
 $castopod  = new CastopodAPI(CASTOPOD_URL, CASTOPOD_API_USER, CASTOPOD_API_PASSWORD);
 $store     = new PodcastsStore(PODCASTS_FILE);
@@ -39,6 +50,8 @@ $_SESSION['active_podcast'] = $activePodcast;
 
 // ── Podcast store actions ─────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'podcasts') {
+    if (!verify_csrf()) { $error = 'Token CSRF inválido.'; }
+    else {
     $action = $_POST['action'] ?? '';
     if ($action === 'add') {
         $name   = trim($_POST['name'] ?? '');
@@ -54,10 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'podcasts') {
         $store->remove($_POST['handle'] ?? '');
         $success = 'Podcast eliminado.';
     }
+    }
 }
 
 // ── Template actions ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'templates') {
+    if (!verify_csrf()) { $error = 'Token CSRF inválido.'; }
+    else {
     $action = $_POST['action'] ?? '';
     if ($action === 'add') {
         $name = trim($_POST['tpl_name'] ?? '');
@@ -73,10 +89,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'templates') {
         $templateSt->delete($_POST['tpl_id'] ?? '');
         $success = 'Plantilla eliminada.';
     }
+    }
 }
 
 // ── Local draft actions ───────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'save_draft') {
+    if (!verify_csrf()) { $error = 'Token CSRF inválido.'; }
+    else {
     $fields = [
         'title'          => trim($_POST['title'] ?? ''),
         'description'    => trim($_POST['description'] ?? ''),
@@ -93,15 +112,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'save_draft') {
     $success = 'Borrador guardado.';
     header("Location: index.php?page=publish&podcast=" . urlencode($activePodcast) . "&draft_id={$id}");
     exit;
+    }
 }
 
-if (isset($_GET['delete_draft']) && $auth->isLoggedIn()) {
-    $draftSt->delete_draft($activePodcast, $_GET['delete_draft']);
+// ── Delete draft (POST only) ─────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($page === 'delete_draft') && $auth->isLoggedIn()) {
+    if (verify_csrf()) {
+        $draftSt->delete_draft($activePodcast, $_POST['draft_id'] ?? '');
+    }
     header('Location: index.php?page=local_drafts&podcast=' . urlencode($activePodcast)); exit;
 }
 
 // ── Publish draft from Castopod ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish_draft') {
+    if (!verify_csrf()) { $error = 'Token CSRF inválido.'; $page = 'drafts'; }
+    else {
     try {
         $episodeId = (int)($_POST['episode_id'] ?? 0);
         if (!$episodeId) throw new Exception('ID de episodio invalido.');
@@ -109,10 +134,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish_draft') {
         $success = 'Borrador publicado correctamente.';
         $page = 'drafts';
     } catch (Exception $e) { $error = $e->getMessage(); $page = 'drafts'; }
+    }
 }
 
 // ── Publish episode ───────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
+    if (!verify_csrf()) { $error = 'Token CSRF inválido.'; }
+    else {
     try {
         $data = [
             'title'          => trim($_POST['title'] ?? ''),
@@ -132,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
             $audioFile = $_FILES['audio_file'];
         } elseif (!empty($_POST['recorded_audio_data'])) {
             $rawData = $_POST['recorded_audio_data'];
-            error_log('[DEBUG] recorded_audio_data length: ' . strlen($rawData));
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] recorded_audio_data length: ' . strlen($rawData));
 
             if (strlen($rawData) < 100) {
                 throw new Exception('Los datos de audio grabado son demasiado cortos (menos de 100 bytes). Posiblemente no se grabó correctamente.');
@@ -149,35 +177,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
                 throw new Exception('Error al decodificar base64: los datos no son base64 válidos.');
             }
             $decodedLen = strlen($decoded);
-            error_log('[DEBUG] Decoded size: ' . $decodedLen . ' bytes');
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Decoded size: ' . $decodedLen . ' bytes');
             if ($decodedLen < 100) {
                 throw new Exception('El audio decodificado es demasiado pequeño (' . $decodedLen . ' bytes).');
             }
 
             $tmpDir = UPLOAD_TMP_DIR;
-            error_log('[DEBUG] UPLOAD_TMP_DIR = ' . $tmpDir);
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] UPLOAD_TMP_DIR = ' . $tmpDir);
             if (!is_dir($tmpDir)) {
-                error_log('[DEBUG] Creando directorio temporal: ' . $tmpDir);
+                if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Creando directorio temporal: ' . $tmpDir);
                 if (!mkdir($tmpDir, 0777, true)) {
                     throw new Exception('No se pudo crear el directorio temporal: ' . $tmpDir);
                 }
                 // Ensure permissions are set correctly
                 chmod($tmpDir, 0777);
             } else {
-                error_log('[DEBUG] Directorio temporal ya existe. Permisos: ' . substr(sprintf('%o', fileperms($tmpDir)), -4));
+                if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Directorio temporal ya existe. Permisos: ' . substr(sprintf('%o', fileperms($tmpDir)), -4));
             }
 
             $tmpPath = $tmpDir . '/rec_' . uniqid() . '.webm';
-            error_log('[DEBUG] Intentando escribir archivo: ' . $tmpPath);
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Intentando escribir archivo: ' . $tmpPath);
             $written = file_put_contents($tmpPath, $decoded, LOCK_EX);
             if ($written === false) {
                 throw new Exception('Error al escribir el archivo de audio en ' . $tmpPath);
             }
-            error_log('[DEBUG] Archivo escrito: ' . $tmpPath . ' - ' . $written . ' bytes');
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Archivo escrito: ' . $tmpPath . ' - ' . $written . ' bytes');
 
             clearstatcache(true, $tmpPath);
             $fileSize = filesize($tmpPath);
-            error_log('[DEBUG] filesize después de clearstatcache: ' . ($fileSize === false ? 'false' : $fileSize));
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] filesize después de clearstatcache: ' . ($fileSize === false ? 'false' : $fileSize));
             if ($fileSize === false || $fileSize === 0) {
                 unlink($tmpPath);
                 throw new Exception('El archivo grabado está vacío después de escribir.');
@@ -202,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
                 } else {
                     // Fallback: asumir audio/webm (es el formato por defecto del grabador)
                     $finalMime = 'audio/webm';
-                    error_log('[DEBUG] MIME no detectado, asumiendo audio/webm. Detected: ' . ($detectedMime ?: 'none'));
+                    if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] MIME no detectado, asumiendo audio/webm. Detected: ' . ($detectedMime ?: 'none'));
                 }
             }
 
@@ -226,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
                 $newPath = preg_replace('/\\.webm$/', '.' . $ext, $tmpPath);
                 if (rename($tmpPath, $newPath)) {
                     $tmpPath = $newPath;
-                    error_log('[DEBUG] Archivo renombrado a: ' . $tmpPath);
+                    if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Archivo renombrado a: ' . $tmpPath);
                 }
             }
 
@@ -237,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
                 'size'     => filesize($tmpPath),
                 '_cleanup' => true,
             ];
-            error_log('[DEBUG] Audio file listo: ' . json_encode($audioFile));
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Audio file listo: ' . json_encode($audioFile));
         } elseif (empty($_POST['audio_url'])) {
             throw new Exception('Debes grabar, subir o enlazar un archivo de audio.');
         } else {
@@ -247,12 +275,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
         $coverFile     = !empty($_FILES['cover_image']['name']) ? $_FILES['cover_image'] : null;
         $podcastHandle = !empty($_POST['podcast_handle']) ? trim($_POST['podcast_handle']) : CASTOPOD_PODCAST_HANDLE;
 
-        error_log('[DEBUG] Antes de llamar a publishEpisode. audioFile: ' . json_encode($audioFile));
+        if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Antes de llamar a publishEpisode. audioFile: ' . json_encode($audioFile));
         $result = $castopod->publishEpisode($podcastHandle, CASTOPOD_USER_ID, $data, $audioFile, $coverFile);
-        error_log('[DEBUG] Después de publishEpisode. Resultado: ' . json_encode($result));
+        if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Después de publishEpisode. Resultado: ' . json_encode($result));
 
         if (!empty($audioFile['_cleanup']) && file_exists($audioFile['tmp_name'])) {
-            error_log('[DEBUG] Limpiando archivo temporal: ' . $audioFile['tmp_name']);
+            if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Limpiando archivo temporal: ' . $audioFile['tmp_name']);
             unlink($audioFile['tmp_name']);
         }
 
@@ -265,23 +293,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
 
     } catch (Exception $e) {
         $error = $e->getMessage();
-        error_log('[DEBUG] Excepción en publish: ' . $e->getMessage());
-        error_log('[DEBUG] Trace: ' . $e->getTraceAsString());
+        if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) {
+            error_log('[CastopodAPI] Excepción en publish: ' . $e->getMessage());
+        }
         if (!empty($audioFile['_cleanup']) && !empty($audioFile['tmp_name']) && file_exists($audioFile['tmp_name'])) {
-            error_log('[DEBUG] Limpiando archivo temporal en catch: ' . $audioFile['tmp_name']);
             unlink($audioFile['tmp_name']);
         }
     }
+    }
 }
 
-// ── Tmp cleanup ───────────────────────────────────────────
-if (isset($_GET['deltmp']) && $auth->isLoggedIn()) {
-    $t = UPLOAD_TMP_DIR . '/' . basename($_GET['deltmp']);
-    if (is_file($t)) unlink($t);
+// ── Tmp cleanup (POST only) ──────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['deltmp']) && $auth->isLoggedIn()) {
+    if (verify_csrf()) {
+        $t = UPLOAD_TMP_DIR . '/' . basename($_POST['deltmp']);
+        if (is_file($t)) unlink($t);
+    }
     header('Location: index.php?page=dashboard&podcast=' . urlencode($activePodcast)); exit;
 }
-if (isset($_GET['deltmpall']) && $auth->isLoggedIn()) {
-    foreach (glob(UPLOAD_TMP_DIR . '/*') as $f) { if (is_file($f)) unlink($f); }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['deltmpall']) && $auth->isLoggedIn()) {
+    if (verify_csrf()) {
+        foreach (glob(UPLOAD_TMP_DIR . '/*') as $f) { if (is_file($f)) unlink($f); }
+    }
     header('Location: index.php?page=dashboard&podcast=' . urlencode($activePodcast)); exit;
 }
 

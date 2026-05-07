@@ -3,17 +3,24 @@ class Auth {
     private const SESSION_KEY = 'castopod_auth';
 
     public function login(string $password): bool {
-        if (password_verify($password, password_hash(APP_PASSWORD, PASSWORD_BCRYPT))
-            || $password === APP_PASSWORD) {
-            $_SESSION[self::SESSION_KEY] = true;
-            $_SESSION['login_time'] = time();
-            return true;
+        // Comparación timing-safe contra la contraseña configurada
+        if (!hash_equals(APP_PASSWORD, $password)) {
+            return false;
         }
-        return false;
+        // Regenerar ID de sesión para evitar session fixation
+        session_regenerate_id(true);
+        $_SESSION[self::SESSION_KEY] = true;
+        $_SESSION['login_time'] = time();
+        return true;
     }
 
     public function logout(): void {
-        unset($_SESSION[self::SESSION_KEY]);
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $p = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000,
+                $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        }
         session_destroy();
     }
 

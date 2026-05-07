@@ -227,8 +227,7 @@ class CastopodAPI {
     // Applied to ALL audio uploads, not just WebM recordings
     // -------------------------------------------------------
     private function ensureMp3(array $file, float $lufsLevel = -16.0): array {
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        error_log('[DEBUG] ensureMp3 called. Input file: ' . json_encode($file));
+        $debug = defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG;
         
         $ffmpeg = trim((string) shell_exec('which ffmpeg 2>/dev/null'));
         if (empty($ffmpeg)) {
@@ -236,44 +235,37 @@ class CastopodAPI {
                 'FFmpeg no está instalado. Instala con: sudo apt install ffmpeg'
             );
         }
-        error_log('[DEBUG] FFmpeg path: ' . $ffmpeg);
         
         if (!is_dir(UPLOAD_TMP_DIR)) {
-            error_log('[DEBUG] Creando UPLOAD_TMP_DIR desde ensureMp3: ' . UPLOAD_TMP_DIR);
-            mkdir(UPLOAD_TMP_DIR, 0777, true);
-            chmod(UPLOAD_TMP_DIR, 0777);
+            mkdir(UPLOAD_TMP_DIR, 0750, true);
         }
         
         $input = $file['tmp_name'];
-        error_log('[DEBUG] Input file path: ' . $input);
         if (!file_exists($input)) {
             throw new Exception('El archivo de audio no existe en la ubicación temporal: ' . $input);
         }
-        $inputSize = filesize($input);
-        error_log('[DEBUG] Input file size: ' . $inputSize);
-        if ($inputSize === 0) {
+        if (filesize($input) === 0) {
             throw new Exception('El archivo de audio está vacío: ' . $input);
         }
         $normalizedName = preg_replace('/\.(webm|opus|ogg|mp3|m4a|wav|flac|aac)$/i', '.mp3', $file['name']);
         $out = UPLOAD_TMP_DIR . '/norm_' . uniqid() . '.mp3';
-        error_log('[DEBUG] Output file path: ' . $out);
         
         // Validar nivel LUFS (entre -70 y 0)
         $lufsLevel = max(-70, min(0, $lufsLevel));
-        error_log('[DEBUG] LUFS level: ' . $lufsLevel);
+        $lufsStr = number_format($lufsLevel, 1, '.', '');
+        if ($debug) error_log("[CastopodAPI] ensureMp3: input={$input}, LUFS={$lufsStr}");
         
         // Pass 1: medir estadísticas de loudness
+        $measureFilter = "loudnorm=I={$lufsStr}:TP=-1.5:LRA=11:print_format=json";
         $measureCmd = sprintf(
-            '%s -y -i %s -vn -af loudnorm=I=%s:TP=-1.5:LRA=11:print_format=json -f null /dev/null',
+            '%s -y -i %s -vn -af %s -f null /dev/null',
             escapeshellarg($ffmpeg),
             escapeshellarg($input),
-            escapeshellarg($lufsLevel)
+            escapeshellarg($measureFilter)
         );
-        error_log('[DEBUG] Measure command: ' . $measureCmd);
         exec($measureCmd . ' 2>&1', $measureLines, $measureExitCode);
         $measureOutput = implode("\n", $measureLines);
-        error_log('[DEBUG] Measure exit code: ' . $measureExitCode);
-        error_log('[DEBUG] Measure output (first 500 chars): ' . substr($measureOutput, 0, 500));
+        if ($debug) error_log("[CastopodAPI] Pass 1 exit: {$measureExitCode}");
         if ($measureExitCode !== 0) {
             throw new Exception('FFmpeg falló al medir loudness. Log: ' . $measureOutput);
         }
@@ -282,9 +274,6 @@ class CastopodAPI {
         $stats = null;
         if ($measureOutput && preg_match('/\{[^}]+\}/s', $measureOutput, $m)) {
             $stats = json_decode($m[0], true);
-            error_log('[DEBUG] Stats parsed: ' . json_encode($stats));
-        } else {
-            error_log('[DEBUG] No stats JSON found in measure output');
         }
         
         // Pass 2: aplicar normalización con valores medidos
@@ -295,20 +284,18 @@ class CastopodAPI {
             // Normalización lineal de dos pasos - más precisa
             $filter = sprintf(
                 'loudnorm=I=%s:TP=-1.5:LRA=11:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true',
-                escapeshellarg($lufsLevel),
+                $lufsStr,
                 $stats['input_i'],
                 $stats['input_tp'],
                 $stats['input_lra'],
                 $stats['input_thresh'],
                 $stats['target_offset']
             );
-            error_log('[DEBUG] Using two-pass linear filter');
         } else {
             // Fallback: un solo paso si falla la medición
-            $filter = sprintf('loudnorm=I=%s:TP=-1.5:LRA=11', escapeshellarg($lufsLevel));
-            error_log('[DEBUG] Using single-pass fallback filter');
+            $filter = "loudnorm=I={$lufsStr}:TP=-1.5:LRA=11";
+            if ($debug) error_log('[CastopodAPI] Using single-pass fallback filter');
         }
-        error_log('[DEBUG] Filter string: ' . $filter);
         
         $convertCmd = sprintf(
             '%s -y -i %s -vn -af %s -acodec libmp3lame -ab 192k -ar 44100 %s',
@@ -317,11 +304,9 @@ class CastopodAPI {
             escapeshellarg($filter),
             escapeshellarg($out)
         );
-        error_log('[DEBUG] Convert command: ' . $convertCmd);
         exec($convertCmd . ' 2>&1', $convertLines, $convertExitCode);
         $convertLog = implode("\n", $convertLines);
-        error_log('[DEBUG] Convert exit code: ' . $convertExitCode);
-        error_log('[DEBUG] Convert log (first 500 chars): ' . substr($convertLog, 0, 500));
+        if ($debug) error_log("[CastopodAPI] Pass 2 exit: {$convertExitCode}, size: " . (file_exists($out) ? filesize($out) : 'N/A'));
         
         if ($convertExitCode !== 0 || !file_exists($out) || filesize($out) < 1024) {
             throw new Exception(
@@ -332,7 +317,6 @@ class CastopodAPI {
         }
         
         $this->tmpFiles[] = $out;
-        error_log('[DEBUG] Output file size: ' . filesize($out));
         
         return [
             'tmp_name' => $out,

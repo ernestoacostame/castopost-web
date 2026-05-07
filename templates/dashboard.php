@@ -110,11 +110,19 @@ if (is_dir(UPLOAD_TMP_DIR)) {
   <div class="tmp-item">
     <span class="tmp-name"><?= htmlspecialchars($tf['name']) ?></span>
     <span class="tmp-meta"><?= $tf['size'] ?> MB / <?= $tf['age'] ?> min</span>
-    <a href="index.php?page=dashboard&podcast=<?= urlencode($activePodcast) ?>&deltmp=<?= urlencode($tf['name']) ?>" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar?')">x</a>
+    <form method="POST" action="index.php?page=dashboard" style="margin:0;display:inline">
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+      <input type="hidden" name="deltmp" value="<?= htmlspecialchars($tf['name']) ?>">
+      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar?')">x</button>
+    </form>
   </div>
   <?php endforeach; ?>
   <div style="padding:.6rem 0;text-align:right">
-    <a href="index.php?page=dashboard&podcast=<?= urlencode($activePodcast) ?>&deltmpall=1" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar todos?')">Limpiar todo</a>
+    <form method="POST" action="index.php?page=dashboard" style="margin:0;display:inline">
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+      <input type="hidden" name="deltmpall" value="1">
+      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar todos?')">Limpiar todo</button>
+    </form>
   </div>
 </div>
 <?php endif; ?>

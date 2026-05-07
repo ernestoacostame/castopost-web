@@ -16,8 +16,11 @@
     </div>
     <span class="ep-draft">local</span>
     <a href="index.php?page=publish&podcast=<?= urlencode($activePodcast) ?>&draft_id=<?= urlencode($ld['draft_id']) ?>" class="btn btn-ghost btn-sm">Editar</a>
-    <a href="index.php?page=local_drafts&podcast=<?= urlencode($activePodcast) ?>&delete_draft=<?= urlencode($ld['draft_id']) ?>"
-       class="btn btn-danger btn-sm" onclick="return confirm('Eliminar este borrador?')">x</a>
+    <form method="POST" action="index.php?page=delete_draft&podcast=<?= urlencode($activePodcast) ?>" style="margin:0;display:inline">
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+      <input type="hidden" name="draft_id" value="<?= htmlspecialchars($ld['draft_id']) ?>">
+      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar este borrador?')">x</button>
+    </form>
   </div>
   <?php endforeach; ?>
 </div>

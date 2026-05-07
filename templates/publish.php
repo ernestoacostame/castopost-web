@@ -8,6 +8,15 @@ $draftId = $editDraft['draft_id'] ?? '';
   <p>Publicando en <strong><?= htmlspecialchars($activePodcast) ?></strong></p>
 </div>
 
+<?php
+$ffmpegAvailable = !empty(trim((string) shell_exec('which ffmpeg 2>/dev/null')));
+if (!$ffmpegAvailable): ?>
+<div class="alert alert-err fade" style="border-color:rgba(248,113,113,.4)">
+  ⚠ FFmpeg no encontrado. La conversión y normalización de audio no funcionará.
+  Instala con: <code style="background:var(--bg3);padding:.15rem .4rem;border-radius:3px">sudo apt install ffmpeg</code>
+</div>
+<?php endif; ?>
+
 <!-- LOCAL DRAFTS SIDEBAR LINK -->
 <?php if (!empty($localDrafts) && !$draftId): ?>
 <div class="drafts-bar fade">
@@ -25,6 +34,7 @@ $draftId = $editDraft['draft_id'] ?? '';
 
 <!-- MAIN PUBLISH FORM -->
 <form method="POST" action="index.php?page=publish&podcast=<?= urlencode($activePodcast) ?>" enctype="multipart/form-data" data-loading id="publishForm">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
   <input type="hidden" name="podcast_handle" value="<?= htmlspecialchars($activePodcast) ?>">
   <input type="hidden" name="draft_id" value="<?= htmlspecialchars($draftId) ?>">
 
@@ -195,13 +205,22 @@ $draftId = $editDraft['draft_id'] ?? '';
 
   <!-- ACTIONS -->
   <div style="display:flex;gap:.6rem;flex-wrap:wrap">
-    <button type="submit" class="btn btn-primary" style="flex:1">
+    <button type="submit" class="btn btn-primary" style="flex:1" id="btnPublish">
       &#128640; Publicar en Castopod
     </button>
     <button type="button" class="btn btn-ghost" id="btnSaveDraft">
       &#128190; Guardar borrador
     </button>
     <a href="index.php?page=dashboard&podcast=<?= urlencode($activePodcast) ?>" class="btn btn-ghost">Cancelar</a>
+  </div>
+
+  <!-- Upload progress overlay -->
+  <div id="uploadOverlay" style="display:none;margin-top:1rem;padding:1.2rem;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);text-align:center">
+    <div id="uploadStatus" style="font-size:.85rem;color:var(--text2);margin-bottom:.6rem">Subiendo...</div>
+    <div style="width:100%;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
+      <div id="uploadBar" style="width:0%;height:100%;background:var(--accent);border-radius:3px;transition:width .2s"></div>
+    </div>
+    <div id="uploadPercent" style="font-size:.72rem;color:var(--text3);margin-top:.3rem;font-family:'Noto Sans Mono',monospace">0%</div>
   </div>
   <?php if ($draftId): ?>
   <p style="font-size:.75rem;color:var(--green);margin-top:.6rem">Editando borrador guardado el <?= htmlspecialchars($editDraft['saved_at'] ?? '') ?></p>
@@ -210,6 +229,7 @@ $draftId = $editDraft['draft_id'] ?? '';
 
 <!-- SAVE DRAFT FORM (hidden, submitted by JS) -->
 <form method="POST" action="index.php?page=save_draft&podcast=<?= urlencode($activePodcast) ?>" id="draftForm" style="display:none">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
   <input type="hidden" name="draft_id" id="draftFormId" value="<?= htmlspecialchars($draftId) ?>">
   <input type="hidden" name="title"          id="df_title">
   <input type="hidden" name="description"    id="df_desc">
@@ -527,12 +547,53 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 })();
 
-// VALIDATE audio source
+// VALIDATE audio source + XHR upload with progress
 document.getElementById('publishForm').addEventListener('submit',function(e){
+  e.preventDefault();
   const hasFile=document.querySelector('input[name="audio_file"]')?.files.length>0;
   const hasUrl=document.getElementById('audio_url')?.value.trim()!=='';
   const hasRec=document.getElementsByName('recorded_audio_data')[0]?.value!=='';
-  if(!hasFile&&!hasUrl&&!hasRec){ e.preventDefault(); alert('Necesitas grabar, subir o enlazar un audio.'); }
+  if(!hasFile&&!hasUrl&&!hasRec){ alert('Necesitas grabar, subir o enlazar un audio.'); return; }
+
+  const form = this;
+  const btn = document.getElementById('btnPublish');
+  const overlay = document.getElementById('uploadOverlay');
+  const bar = document.getElementById('uploadBar');
+  const pct = document.getElementById('uploadPercent');
+  const statusEl = document.getElementById('uploadStatus');
+
+  btn.disabled = true;
+  btn.textContent = 'Publicando...';
+  overlay.style.display = 'block';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', form.action, true);
+
+  xhr.upload.addEventListener('progress', function(ev) {
+    if (ev.lengthComputable) {
+      const p = Math.round(ev.loaded / ev.total * 100);
+      bar.style.width = p + '%';
+      pct.textContent = p + '%';
+      if (p < 100) statusEl.textContent = 'Subiendo audio...';
+      else statusEl.textContent = 'Procesando en servidor...';
+    }
+  });
+
+  xhr.addEventListener('load', function() {
+    // Server returns a full HTML page, so just replace current page
+    document.open();
+    document.write(xhr.responseText);
+    document.close();
+  });
+
+  xhr.addEventListener('error', function() {
+    btn.disabled = false;
+    btn.textContent = '🚀 Publicar en Castopod';
+    overlay.style.display = 'none';
+    alert('Error de conexión al subir el episodio.');
+  });
+
+  xhr.send(new FormData(form));
 });
 
 // TEMPLATE PICKER

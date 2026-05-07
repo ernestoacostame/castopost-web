@@ -8,9 +8,10 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
     <div style="font-weight:500;font-size:.95rem"><?= htmlspecialchars($tpl['name']) ?></div>
     <div style="display:flex;gap:.4rem">
-      <button class="btn btn-ghost btn-sm" onclick="editTemplate('<?= htmlspecialchars(addslashes($tpl['id'])) ?>','<?= htmlspecialchars(addslashes($tpl['name'])) ?>',this)">Editar</button>
+      <button class="btn btn-ghost btn-sm" onclick="editTemplate(<?= htmlspecialchars(json_encode($tpl['id'])) ?>,<?= htmlspecialchars(json_encode($tpl['name'])) ?>,this)">Editar</button>
       <?php if($tpl['id'] !== 'default'): ?>
       <form method="POST" action="index.php?page=templates" style="margin:0">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="tpl_id" value="<?= htmlspecialchars($tpl['id']) ?>">
         <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar plantilla?')">x</button>
@@ -22,6 +23,7 @@
 
   <!-- Inline edit form (hidden by default) -->
   <form method="POST" action="index.php?page=templates" class="tpl-edit-form" id="editform_<?= htmlspecialchars($tpl['id']) ?>" style="display:none;margin-top:.75rem">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
     <input type="hidden" name="action" value="update">
     <input type="hidden" name="tpl_id" value="<?= htmlspecialchars($tpl['id']) ?>">
     <div class="field">
@@ -44,6 +46,7 @@
 <div class="group-label" style="margin-top:1.5rem">Nueva plantilla</div>
 <div style="background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:1.1rem" class="fade">
   <form method="POST" action="index.php?page=templates">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
     <input type="hidden" name="action" value="add">
     <div class="field">
       <label>Nombre de la plantilla</label>

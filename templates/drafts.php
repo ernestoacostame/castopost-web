@@ -17,6 +17,7 @@
     <span class="ep-draft">borrador</span>
     <?php if (!empty($ep['id'])): ?>
     <form method="POST" action="index.php?page=publish_draft&podcast=<?= urlencode($activePodcast) ?>" style="margin:0">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
       <input type="hidden" name="episode_id" value="<?= (int)$ep['id'] ?>">
       <button type="submit" class="btn btn-ghost btn-sm" onclick="return confirm('Publicar este borrador ahora?')">Publicar</button>
     </form>

@@ -27,6 +27,7 @@ $allNav = array_merge(
     <span class="podcast-card-badge">config.php</span>
   <?php else: ?>
     <form method="POST" action="index.php?page=podcasts" style="margin:0">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
       <input type="hidden" name="action" value="delete">
       <input type="hidden" name="handle" value="<?= htmlspecialchars($pod['handle']) ?>">
       <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Eliminar podcast de la lista?')">Eliminar</button>
@@ -39,6 +40,7 @@ $allNav = array_merge(
 <div class="group-label fade">Anadir podcast</div>
 <div style="background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:1.1rem" class="fade">
   <form method="POST" action="index.php?page=podcasts">
+  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
     <input type="hidden" name="action" value="add">
     <div class="field">
       <label>Nombre del podcast</label>
