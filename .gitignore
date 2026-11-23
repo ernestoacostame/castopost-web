@@ -1,0 +1,8 @@
+config.php
+local_drafts.json
+podcasts.json
+templates.json
+.aider.*
+Docker/
+tmp/*
+!tmp/.gitkeep

@@ -186,11 +186,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page === 'publish') {
             if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] UPLOAD_TMP_DIR = ' . $tmpDir);
             if (!is_dir($tmpDir)) {
                 if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Creando directorio temporal: ' . $tmpDir);
-                if (!mkdir($tmpDir, 0777, true)) {
+                if (!mkdir($tmpDir, 0750, true)) {
                     throw new Exception('No se pudo crear el directorio temporal: ' . $tmpDir);
                 }
                 // Ensure permissions are set correctly
-                chmod($tmpDir, 0777);
+                chmod($tmpDir, 0750);
             } else {
                 if (defined('CASTOPOD_DEBUG') && CASTOPOD_DEBUG) error_log('[DEBUG] Directorio temporal ya existe. Permisos: ' . substr(sprintf('%o', fileperms($tmpDir)), -4));
             }

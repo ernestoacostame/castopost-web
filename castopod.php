@@ -146,10 +146,10 @@ class CastopodAPI {
             $lufsLevel = (float) $_POST['lufs_level'];
         }
         
-        // Convertir a MP3 con normalización LUFS
+        // Validar y luego convertir a MP3 con normalización LUFS
         if ($audioFile && !empty($audioFile['tmp_name'])) {
-            $audioFile = $this->ensureMp3($audioFile, $lufsLevel);
             $this->validateAudioFile($audioFile);
+            $audioFile = $this->ensureMp3($audioFile, $lufsLevel);
         } elseif (empty($fields['audio_url'] ?? '')) {
             throw new Exception('Debes subir un archivo de audio o proporcionar una URL.');
         }

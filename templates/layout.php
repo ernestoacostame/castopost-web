@@ -37,6 +37,13 @@ $allPodcastsNav = array_merge([$defaultPodcast], array_filter($allPodcasts, fn($
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Noto+Sans+Mono:wght@300;400;500&family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap" rel="stylesheet">
 <style>
 /* ── DARK THEMES ─────────────────────────────────────────── */
+html[data-theme="steel"] {
+  --bg:      #0f1117; --bg2: #16181f; --bg3: #1c1e27;
+  --line:    #262830; --line2: #32343e;
+  --text:    #e8eaed; --text2: #9ba1ad; --text3: #5c6170;
+  --accent:  #3d9be9; --accent-btn: #0f1117;
+  --red:     #f06050; --green: #34d399; --r: 10px;
+}
 html[data-theme="violet"] {
   --bg:      #0f0f10; --bg2: #17171a; --bg3: #1f1f24;
   --line:    #28282f; --line2: #38383f;
@@ -59,6 +66,13 @@ html[data-theme="amber"] {
   --red:     #f87171; --green: #6ee7b7; --r: 9px;
 }
 /* ── LIGHT THEMES ────────────────────────────────────────── */
+html[data-theme="steel-light"] {
+  --bg:      #f4f5f7; --bg2: #ffffff; --bg3: #ecedf1;
+  --line:    #d8dae0; --line2: #c8cad2;
+  --text:    #1a1c22; --text2: #52566a; --text3: #888da0;
+  --accent:  #2b7fd4; --accent-btn: #f4f5f7;
+  --red:     #dc2626; --green: #0f8a5f; --r: 10px;
+}
 html[data-theme="light"] {
   --bg:      #f8f7f5; --bg2: #eeecea; --bg3: #e4e1dd;
   --line:    #d8d4cf; --line2: #bfbab3;
@@ -80,13 +94,13 @@ html[data-theme="light-rose"] {
   --accent:  #be1a2a; --accent-btn: #fdf4f5;
   --red:     #be1a2a; --green: #059669; --r: 9px;
 }
-/* Fallback if no data-theme set yet */
+/* Fallback - default to steel */
 :root {
-  --bg:      #0f0f10; --bg2: #17171a; --bg3: #1f1f24;
-  --line:    #28282f; --line2: #38383f;
-  --text:    #f0eff4; --text2: #9998a8; --text3: #55546a;
-  --accent:  #c9b8ff; --accent-btn: #0f0f10;
-  --red:     #f87171; --green: #6ee7b7; --r: 9px;
+  --bg:      #0f1117; --bg2: #16181f; --bg3: #1c1e27;
+  --line:    #262830; --line2: #32343e;
+  --text:    #e8eaed; --text2: #9ba1ad; --text3: #5c6170;
+  --accent:  #3d9be9; --accent-btn: #0f1117;
+  --red:     #f06050; --green: #34d399; --r: 10px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -535,8 +549,8 @@ audio { width: 100%; margin-top: .75rem; border-radius: 6px; outline: none; }
 <script>
 (function(){
   var t = localStorage.getItem('cp_theme');
-  var valid = ['violet','teal','amber','light','light-blue','light-rose'];
-  document.documentElement.setAttribute('data-theme', valid.indexOf(t) >= 0 ? t : 'violet');
+  var valid = ['steel','violet','teal','amber','steel-light','light','light-blue','light-rose'];
+  document.documentElement.setAttribute('data-theme', valid.indexOf(t) >= 0 ? t : 'steel');
 })();
 </script>
 </head>
@@ -557,10 +571,12 @@ audio { width: 100%; margin-top: .75rem; border-radius: 6px; outline: none; }
       <button class="nav-btn theme-btn" id="themeBtn" title="Tema">&#9680;</button>
       <div class="theme-dd" id="themeDd">
         <div class="theme-dd-section">Oscuro</div>
+        <button class="theme-opt" data-theme="steel"><span class="theme-dot" style="background:#3d9be9"></span>Steel</button>
         <button class="theme-opt" data-theme="violet"><span class="theme-dot" style="background:#c9b8ff"></span>Violeta</button>
         <button class="theme-opt" data-theme="teal"><span class="theme-dot" style="background:#4dd9e0"></span>Teal</button>
         <button class="theme-opt" data-theme="amber"><span class="theme-dot" style="background:#f5c542"></span>Ambar</button>
         <div class="theme-dd-section">Claro</div>
+        <button class="theme-opt" data-theme="steel-light"><span class="theme-dot" style="background:#2b7fd4"></span>Steel Claro</button>
         <button class="theme-opt" data-theme="light"><span class="theme-dot" style="background:#6d28d9"></span>Blanco</button>
         <button class="theme-opt" data-theme="light-blue"><span class="theme-dot" style="background:#1d6fb8"></span>Azul</button>
         <button class="theme-opt" data-theme="light-rose"><span class="theme-dot" style="background:#be1a2a"></span>Rosa</button>
@@ -586,10 +602,12 @@ audio { width: 100%; margin-top: .75rem; border-radius: 6px; outline: none; }
   <div class="nav-mobile-item" style="flex-direction:column;align-items:flex-start;gap:.5rem;padding-bottom:.85rem">
     <span style="font-size:.65rem;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;font-family:'Noto Sans Mono',monospace">Tema</span>
     <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+      <button class="theme-opt theme-opt-mobile" data-theme="steel"   style="background:var(--bg3)"><span class="theme-dot" style="background:#3d9be9"></span>Steel</button>
       <button class="theme-opt theme-opt-mobile" data-theme="violet"  style="background:var(--bg3)"><span class="theme-dot" style="background:#c9b8ff"></span>Violeta</button>
       <button class="theme-opt theme-opt-mobile" data-theme="teal"    style="background:var(--bg3)"><span class="theme-dot" style="background:#4dd9e0"></span>Teal</button>
       <button class="theme-opt theme-opt-mobile" data-theme="amber"   style="background:var(--bg3)"><span class="theme-dot" style="background:#f5c542"></span>Ambar</button>
       <button class="theme-opt theme-opt-mobile" data-theme="light"   style="background:var(--bg3)"><span class="theme-dot" style="background:#6d28d9"></span>Blanco</button>
+      <button class="theme-opt theme-opt-mobile" data-theme="steel-light" style="background:var(--bg3)"><span class="theme-dot" style="background:#2b7fd4"></span>Steel Claro</button>
       <button class="theme-opt theme-opt-mobile" data-theme="light-blue" style="background:var(--bg3)"><span class="theme-dot" style="background:#1d6fb8"></span>Azul</button>
       <button class="theme-opt theme-opt-mobile" data-theme="light-rose" style="background:var(--bg3)"><span class="theme-dot" style="background:#be1a2a"></span>Rosa</button>
     </div>
@@ -619,7 +637,7 @@ if ($page !== 'login' && $page !== 'podcasts' && !empty($allPodcastsNav) ):
     $isActive = $pod['handle'] === $activePodcast;
     $style = $isActive ? "background:{$color};border-color:{$color}" : '';
 ?>
-  <a href="index.php?page=<?= $page ?>&podcast=<?= urlencode($pod['handle']) ?>"
+  <a href="index.php?page=<?= urlencode($page) ?>&podcast=<?= urlencode($pod['handle']) ?>"
      class="ptab <?= $isActive ? 'active' : '' ?>"
      style="<?= $style ?>">
     <?= htmlspecialchars($pod['name']) ?>
@@ -646,7 +664,7 @@ switch ($page) {
 <script>
 // ── THEME PICKER ─────────────────────────────────────────
 (function() {
-  var VALID = ['violet','teal','amber','light','light-blue','light-rose'];
+  var VALID = ['steel','violet','teal','amber','steel-light','light','light-blue','light-rose'];
 
   function applyTheme(t) {
     if (VALID.indexOf(t) < 0) return;
@@ -658,7 +676,7 @@ switch ($page) {
   }
 
   // Mark current active option
-  var current = document.documentElement.getAttribute('data-theme') || 'violet';
+  var current = document.documentElement.getAttribute('data-theme') || 'steel';
   document.querySelectorAll('.theme-opt').forEach(function(btn) {
     btn.classList.toggle('active', btn.dataset.theme === current);
   });

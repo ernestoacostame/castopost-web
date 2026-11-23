@@ -36,7 +36,7 @@
     </div>
     <div style="display:flex;gap:.5rem">
       <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="cancelEdit('<?= htmlspecialchars($tpl['id']) ?>')">Cancelar</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="cancelEdit('<?= htmlspecialchars($tpl['id'], ENT_QUOTES, 'UTF-8') ?>')">Cancelar</button>
     </div>
   </form>
 </div>
